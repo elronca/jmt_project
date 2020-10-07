@@ -2,9 +2,6 @@
 
 library(tidyverse)
 library(readxl)
-library(openxlsx)
-
-
 
 # ---------------------------------------------------- Load and prepare data ---------------------------------------------------------------
 
@@ -13,20 +10,19 @@ if(FALSE) { # Download all files in the O*NET core database, in one convenient Z
   
   download.file(
     url = "https://www.onetcenter.org/dl_files/database/db_25_0_excel.zip",
-    destfile = file.path("data", "o_net_files.zip"), mode = "wb")
+    destfile = file.path("data", "onet", "o_net_files.zip"), mode = "wb")
   
 }
 
 
 if(FALSE) { # Unzip the files to folder data
   
-  unzip(file.path("data", "o_net_files.zip"), exdir = file.path("data"))
+  unzip(file.path("data", "onet", "o_net_files.zip"), exdir = file.path("data"))
   
 }
 
 # For onet values extraction we only need following datasets
 
-dir(file.path("data", "db_25_0_excel"))
 
 onet_files <- c("Abilities", "Interests", "Knowledge", "Skills", 
                 "Work Activities", "Work Context", "Work Styles", 
@@ -34,9 +30,9 @@ onet_files <- c("Abilities", "Interests", "Knowledge", "Skills",
 
 onet_files.xlsx <- str_c(onet_files, ".xlsx")
 
-onet_file_location <- str_c(file.path("data", "db_25_0_excel", onet_files.xlsx), sep = "/")
+onet_file_location <- str_c(file.path("data", "onet", "db_25_0_excel", onet_files.xlsx), sep = "/")
 
-names(onet_file_location) <- onet_files %>% str_to_lower() %>% str_replace(" ", "_") 
+names(onet_file_location) <- onet_files %>% str_to_lower() %>% str_replace(" ", "_")
 
 
 # We load selected datafiles and save them in a list
@@ -249,7 +245,7 @@ names(ds_avg_scales) <- str_c("cut", as.character(round(seq(0, 1, by = (1/6)) * 
 
 ds_avg_scales
 
-write.csv2(ds_avg_scales, file.path("results", "cut_offs.csv"), row.names = FALSE)
+write.csv2(ds_avg_scales, file.path("results", "onet", "cut_offs.csv"), row.names = FALSE)
 
 
 # Füge die Skalen als zusätzliche Variable hinzu
@@ -290,9 +286,7 @@ elem_values <- ds_avg_rescaled %>%
   select(o_net_soc_code, title, everything()) %>% 
   ungroup(o_net_soc_code)
 
-# ------------------------------------------------------------------------------------------------------------------------------------------------
-
-titles_wolf <- read_excel("data/Variablenliste_JMT_Kategoriennamen&Definitionen_16.09.2020.xlsx")
+# We rename the column names (by removing the dimension part)
 
 distinct_element_names <- colnames(elem_values)
 
@@ -302,11 +296,11 @@ colnames(elem_values) <- colnames(elem_values) %>% str_split("\\|") %>% map_chr(
 
 # Save data
 
-write.csv(elem_values, file.path("results", "o_net_data.csv"), row.names = FALSE)
+write.csv(elem_values, file.path("results", "onet", "o_net_data.csv"), row.names = FALSE)
 
 saveRDS(elem_values, file = file.path("workspace", "o_net_data.RData"))
 
 rm("avg_similar_constr", "calc_sextiles", "distinct_element_names", 
   "ds_avg", "ds_avg_rescaled", "ds_avg_scales", "elem_values", 
   "job_titles", "onet_df", "onet_file_location", "onet_files", 
-  "onet_files.xlsx", "titles_wolf")
+  "onet_files.xlsx")
