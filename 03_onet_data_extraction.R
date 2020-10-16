@@ -30,7 +30,7 @@ onet_files <- c("Abilities", "Interests", "Knowledge", "Skills",
 
 onet_files.xlsx <- str_c(onet_files, ".xlsx")
 
-onet_file_location <- str_c(file.path("data", "onet", "db_25_0_excel", onet_files.xlsx), sep = "/")
+onet_file_location <- str_c(file.path("01_data", "onet", "db_25_0_excel", onet_files.xlsx), sep = "/")
 
 names(onet_file_location) <- onet_files %>% str_to_lower() %>% str_replace(" ", "_")
 
@@ -245,7 +245,7 @@ names(ds_avg_scales) <- str_c("cut", as.character(round(seq(0, 1, by = (1/6)) * 
 
 ds_avg_scales
 
-write.csv2(ds_avg_scales, file.path("results", "onet", "cut_offs.csv"), row.names = FALSE)
+write.csv2(ds_avg_scales, file.path("03_output", "onet", "cut_offs.csv"), row.names = FALSE)
 
 
 # Füge die Skalen als zusätzliche Variable hinzu
@@ -296,9 +296,9 @@ colnames(elem_values) <- colnames(elem_values) %>% str_split("\\|") %>% map_chr(
 
 # Save data
 
-write.csv(elem_values, file.path("results", "onet", "o_net_data.csv"), row.names = FALSE)
+write.csv(elem_values, file.path("03_output", "onet", "o_net_data.csv"), row.names = FALSE)
 
-saveRDS(elem_values, file = file.path("workspace", "o_net_data.RData"))
+saveRDS(elem_values, file = file.path("02_workspace", "o_net_data.RData"))
 
 rm("avg_similar_constr", "calc_sextiles", "distinct_element_names", 
   "ds_avg", "ds_avg_rescaled", "ds_avg_scales", "elem_values", 
