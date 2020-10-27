@@ -4,7 +4,9 @@ library(readxl)
 
 ## Wir laden die Onet Kategorien und JMT Werte für jeden Beruf
 
-onet <- readRDS(file = file.path("02_workspace", "o_net_data.RData"))
+onet <- readRDS(file = file.path("02_workspace", "o_net_data.RData")) %>% 
+  rename(ONETtitle = title)
+
 
 
 # Onet Liste wird mit zusätzlichen von uns hinzugefügten Job Matching Tool Kategorien ergänzt ( z.B. Geschmackssinn)
@@ -18,7 +20,7 @@ onet <- onet %>%
          `Geruchssinn` = NA_integer_,
          `Taktiles Wahrnehmungsvermögen` = NA_integer_,
          `Gute Allgemeinbildung` = NA_integer_,
-         `Vorbildung/Zulassungsvoraussetzungen` = NA_character_
+         `Vorbildung_Zulassungsvoraussetzungen` = NA_character_
   )
 
 # Wir identifizieren die Job Matching Tool Kategorien
@@ -31,7 +33,7 @@ all_onet_cat <- all_onet_cat[-length(all_onet_cat)]
 
 chberufe <- read_excel(file.path("01_data", "onet_bb_abgleich", "01_SD_basic_Linking us.xlsx")) %>% 
   
-  select(sortierNr:Keywords) %>% 
+  select(sortierNr:Keywords, -ONETtitle) %>% 
   
   filter(!is.na(`Tool-Titel`)) %>% 
   
@@ -48,7 +50,7 @@ my_col_types <- c("skip", "text", "skip", "text", "text",  "skip", "skip", "text
 
 
 abgll <- read_excel(file.path("01_data", "onet_bb_abgleich", "BB_AP_merged_2_bereinigt_linking.xlsx"), 
-  sheet = 1, na = c("", "NA"), col_types = my_col_types) %>% 
+                    sheet = 1, na = c("", "NA"), col_types = my_col_types) %>% 
   rename(bb_linked_to_onet_cat = ONET_kategorien) %>% 
   filter(!is.na(job_title_BB2))
 
@@ -63,29 +65,6 @@ abgll_long <- separate_rows(abgll, bb_linked_to_onet_cat, sep = "\\|")
 chberufe_long <- pivot_longer(data = chberufe, cols = "Auditory Attention":"Gute Allgemeinbildung", names_to = "onet_cat", values_to = "JMT_value")
 
 
-## Plausibility checks
-
-# Betonwerker apapears 235 times in the dataset after pivot_longer, this corresponds with the number of onet categories 
-
-# chberufe_long %>% 
-#   filter(str_detect(chberufe_long$`Tool-Titel`, "Detailhandelsassistent/in Schuhe EBA")) %>% 
-#   pull(`Tool-Titel`) %>% 
-#   length()
-
-# length(all_onet_cat)
-
-# There is no dpulicated Onet categories in Abdichter
-
-# chberufe_long %>% 
-#   filter(`Tool-Titel` == "Betonwerker/in EFZ") %>% 
-#   pull(onet_cat) %>% 
-#   enframe() %>% 
-#   count(value) %>% 
-#   arrange(desc(n))
-# 
-# Schuhe <- chberufe_long %>% filter(`Tool-Titel` == "Detailhandelsassistent/in Schuhe EBA") 
-
-
 # Now we want to merge in the Abgleichliste via Bbtitle, however, since there are NA this does not work properly, that is why we replace NA's with a string "do_not_match"
 
 chberufe_long %>% filter(is.na(Bbtitle))
@@ -95,16 +74,35 @@ chberufe_long <- mutate(chberufe_long, Bbtitle = replace_na(Bbtitle, "do_not_mat
 chberufe_long <- left_join(chberufe_long, abgll_long, by = c("Bbtitle" = "job_title_BB2"))
 
 
-# Schuhe <- chberufe_long %>% filter(`Tool-Titel` == "Detailhandelsassistent/in Schuhe EBA")
-# nrow(Schuhe) / length(all_onet_cat)
+# Fülle die Spalte Vorbildung_Zulassungsvoraussetzungen mit dem entsprechenden Text, der in berufsberatung.ch unter Anforderungen stand
 
-# Fülle die Spalte Vorbildung/Zulassungsvoraussetzungen mit dem entsprechenden Text, der in berufsberatung.ch unter Anforderungen stand
 
 chberufe_long <- chberufe_long %>% 
-  mutate(`Vorbildung/Zulassungsvoraussetzungen` = if_else(bb_linked_to_onet_cat %in% "Vorbildung/Zulassungsvoraussetzungen", `Anforderungen`, `Vorbildung/Zulassungsvoraussetzungen`))
+  mutate(`Vorbildung_Zulassungsvoraussetzungen` = if_else(bb_linked_to_onet_cat %in% "Vorbildung/Zulassungsvoraussetzungen", `Anforderungen`, `Vorbildung_Zulassungsvoraussetzungen`))
 
-# Schuhe <- chberufe_long %>% filter(`Tool-Titel` == "Detailhandelsassistent/in Schuhe EBA")
-# nrow(Schuhe) / length(all_onet_cat)
+
+# Falls meherere Vorbildung/Zulassungsvoraussetzungen pro Beruf und Onet Kategorie, dann nehmen wir die Anforderungen in einer Zelle zusammen.
+
+nrow(chberufe_long)
+
+chberufe_long_vzl <- chberufe_long %>% 
+  filter(bb_linked_to_onet_cat %in% "Vorbildung/Zulassungsvoraussetzungen") %>% 
+  group_by(Bbtitle, onet_cat) %>% 
+  mutate(Vorbildung_Zulassungsvoraussetzungen = str_c(Anforderungen, collapse = "\n")) %>%
+  select(-Anforderungen) %>% 
+  ungroup() %>% 
+  distinct()
+
+chberufe_long_wo_vzl <- chberufe_long %>% 
+  filter(!bb_linked_to_onet_cat %in% "Vorbildung/Zulassungsvoraussetzungen") %>% 
+  select(-Anforderungen)
+
+chberufe_long <- bind_rows(chberufe_long_vzl, chberufe_long_wo_vzl) %>% 
+  arrange(`Tool-Titel`, Bbtitle, sd_nr)
+
+nrow(chberufe_long)
+
+rm(chberufe_long_vzl, chberufe_long_wo_vzl)
 
 
 # Now we want to adjust values via Abgleichliste --------------------------
@@ -167,48 +165,9 @@ chberufe_long_distinct <- chberufe_long %>%
   select(-duplicated_onet_cats, -is_equal)
 
 
-  
-
-# Have a look at the onet categories that were changed
-
-# "Betonwerker/in EFZ"
-
-# test <- chberufe_long_distinct %>% 
-#   filter(str_detect(`Tool-Titel`, "Detailhandelsassistent/in Schuhe EBA")) %>% 
-#   select(`Tool-Titel`, onet_cat, JMT_value, JMT_value_adjusted, was_changed)
-
-# onet_cats_changed_Betonwerker <- chberufe_long_distinct %>% filter(str_detect(`Tool-Titel`, "Betonwerker/in EFZ") & was_changed == 1) %>% pull(onet_cat)
-# 
-# Betonwerker <- chberufe_long_distinct %>% filter(`Tool-Titel` == "Betonwerker/in EFZ")
-# 
-# Betonwerker %>% select(`Tool-Titel`, onet_cat, JMT_value, JMT_value_adjusted, was_changed)
-
-# chberufe_long_distinct %>% 
-#   split(f = .$`Tool-Titel`) %>% 
-#   map_int(nrow) %>% 
-#   table()
-# 
-# sum(few_onet_cats)
-
-
-
-
-
 ## Wieviele Korrekturen von JMT Werten wurden vorgenommen
 
 sum(chberufe_long_distinct$was_changed, na.rm = TRUE)
-
-
-## Wieviele Korrekturen von JMT Werten wurden pro Beruf vorgenommen
-
-# list_corrected <- chberufe_long_distinct %>% 
-#   group_by(`Tool-Titel`) %>% 
-#   tally(was_changed) %>% 
-#   arrange(desc(n))
-# 
-# list_corrected
-
-
 
 
 
@@ -216,13 +175,13 @@ sum(chberufe_long_distinct$was_changed, na.rm = TRUE)
 
 
 chberufe_final <- chberufe_long_distinct %>% 
-  select(-JMT_value, -Anforderungen, -was_changed, -bb_linked_to_onet_cat) %>% 
+  select(-JMT_value, -was_changed, -bb_linked_to_onet_cat) %>% 
   rename(JMT_value = JMT_value_adjusted)
 
 chberufe_final <- chberufe_final %>% 
-  pivot_wider(id_cols = c(sortierNr:`Vorbildung/Zulassungsvoraussetzungen`, Swissdoc), names_from = onet_cat, values_from = JMT_value) %>% 
+  pivot_wider(id_cols = c(sortierNr:`Vorbildung_Zulassungsvoraussetzungen`, Swissdoc), names_from = onet_cat, values_from = JMT_value) %>% 
   add_count(`Tool-Titel`) %>% 
-  filter(!(is.na(`Vorbildung/Zulassungsvoraussetzungen`) & n == 2L)) %>% 
+  filter(!(is.na(`Vorbildung_Zulassungsvoraussetzungen`) & n == 2L)) %>% 
   select(-n) %>% 
   mutate(Bbtitle = if_else(Bbtitle == "do_not_match", NA_character_, Bbtitle))
 
@@ -236,3 +195,47 @@ chberufe_final %>% pull(Bbtitle) %>% sort() %>% str_subset("Geflügel")
 chberufe_final %>% 
   select(`Kontakt mit Tieren`:`Gute Allgemeinbildung`) %>% 
   filter_all(any_vars(!is.na(.)))
+
+
+# ------------------------- Wir mergen Berufsberatungs und onet Daten (für finale Liste für Wolfgang zum HOchladen in JMT Datenbank --------------------------
+
+BB_job_list <- readRDS(file.path("02_workspace", "BB_characteristics", "BB_job_list.RData"))
+
+JMT_joblist_final <- chberufe_final %>% 
+  left_join(rename(BB_job_list, Swissdoc_BB = Swissdoc), by = c("Bbtitle" = "jobTitle")) %>% 
+  select(sortierNr:Bbtitle, Keywords, webID:Vorbildung, Vorbildung_Zulassungsvoraussetzungen, 
+         Swissdoc, url, ONETcode, ONETtitle, `Auditory Attention`:`Gute Allgemeinbildung`) %>% 
+  unite(col = "Vorbildung_Zulassungsvoraussetzungen", Vorbildung:Vorbildung_Zulassungsvoraussetzungen, sep = "\n") %>% 
+  mutate(Vorbildung_Zulassungsvoraussetzungen = str_remove(Vorbildung_Zulassungsvoraussetzungen, "\\\nNA"))
+
+
+# JMT Nummer wird über ONet Kategorien als Zeile eingefügt
+
+descriptorDefinitons <- read_excel(file.path("01_data/onet_bb_abgleich/Variablenliste_JMT_Kategoriennamen^0Definitionen_16.09.2020.xlsx")) %>% 
+  
+  select(one_of(c("Tool-Nr.", "Kategorien_englisch"))) %>% 
+  
+  mutate(Kategorien_englisch = if_else(Kategorien_englisch == str_to_upper(Kategorien_englisch), str_to_title(Kategorien_englisch), Kategorien_englisch)) %>% 
+  
+  drop_na() %>% 
+  
+  filter(Kategorien_englisch != "Na") %>% 
+  
+  mutate(id_title = str_remove(`Tool-Nr.`, "x")) %>% 
+  
+  select(-`Tool-Nr.`)
+
+
+my_matches <- match(names(JMT_joblist_final), descriptorDefinitons$Kategorien_englisch)
+
+my_titles <- descriptorDefinitons[my_matches, ] %>% 
+  t() %>% 
+  as_tibble() %>% 
+  mutate_all(as.character())
+
+names(my_titles) <- names(JMT_joblist_final)
+
+JMT_joblist_final <- mutate_all(JMT_joblist_final, as.character)
+
+JMT_joblist_final <- bind_rows(my_titles, JMT_joblist_final)
+

@@ -224,9 +224,9 @@ job_characteristics %>%
 
 # Data is saved and workspace is cleared ----------------------------------
 
-saveRDS(job_characteristics, file.path("02_workspace", "BB_characteristics", "job_characteristics.RData"))
+saveRDS(job_characteristics, file.path("02_workspace", "BB_characteristics", "BB_job_list.RData"))
 
-write.csv2(job_characteristics, file = file.path("03_output", "BB", "jobTable.csv"), row.names = FALSE)
+write.csv(job_characteristics, file = file.path("03_output", "BB", "BB_job_list.csv"), row.names = FALSE)
 
 rm("bb_job_content", "bb_job_content_l", "bb_job_summary", "bb_job_summary_l", 
   "bb_webids", "bb_webpages", "extract_job_summary", "get_content", 
