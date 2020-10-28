@@ -7,18 +7,23 @@ library(readxl)
 onet <- readRDS(file = file.path("02_workspace", "o_net_data.RData")) %>% 
   rename(ONETtitle = title)
 
+dput(sort(colnames(onet)))
+
 
 
 # Onet Liste wird mit zusätzlichen von uns hinzugefügten Job Matching Tool Kategorien ergänzt ( z.B. Geschmackssinn)
 
 onet <- onet %>% 
   mutate(`Kontakt mit Tieren` = NA_integer_,
-         `Überkopfarbeiten durchführen` = NA_integer_,
+         `Überkopfarbeiten` = NA_integer_,
          `Sinn für Ästhetik` = NA_integer_,
          `Musikalität` = NA_integer_,
          `Geschmackssinn` = NA_integer_,
          `Geruchssinn` = NA_integer_,
-         `Taktiles Wahrnehmungsvermögen` = NA_integer_,
+         `Taktile Wahrnehmung` = NA_integer_,
+         `Umweltbewusstsein` = NA_integer_,
+         `Feuchtigkeit` = NA_integer_,
+         `Belastung durch Allergene` = NA_integer_, 
          `Gute Allgemeinbildung` = NA_integer_,
          `Vorbildung_Zulassungsvoraussetzungen` = NA_character_
   )
@@ -31,7 +36,7 @@ all_onet_cat <- all_onet_cat[-length(all_onet_cat)]
 
 # Urbans Liste mit JMT Berufen wird mit ONet-Werten ergänzt
 
-chberufe <- read_excel(file.path("01_data", "onet_bb_abgleich", "01_SD_basic_Linking us.xlsx")) %>% 
+chberufe <- read_excel(file.path("01_data", "01_SD_basic_Linking us.xlsx")) %>% 
   
   select(sortierNr:Keywords, -ONETtitle) %>% 
   
@@ -49,7 +54,7 @@ my_col_types <- c("skip", "text", "skip", "text", "text",  "skip", "skip", "text
                   "skip", "skip", "skip")
 
 
-abgll <- read_excel(file.path("01_data", "onet_bb_abgleich", "BB_AP_merged_2_bereinigt_linking.xlsx"), 
+abgll <- read_excel(file.path("01_data", "BB_AP_merged_2_bereinigt_linking_Übergabe MN2.xlsx"), 
                     sheet = 1, na = c("", "NA"), col_types = my_col_types) %>% 
   rename(bb_linked_to_onet_cat = ONET_kategorien) %>% 
   filter(!is.na(job_title_BB2))
@@ -211,31 +216,54 @@ JMT_joblist_final <- chberufe_final %>%
 
 # JMT Nummer wird über ONet Kategorien als Zeile eingefügt
 
-descriptorDefinitons <- read_excel(file.path("01_data/onet_bb_abgleich/Variablenliste_JMT_Kategoriennamen^0Definitionen_16.09.2020.xlsx")) %>% 
+descriptor_definitions <- read_excel(file.path("01_data/titles_2020_26_10.xlsx")) %>% 
   
-  select(one_of(c("Tool-Nr.", "Kategorien_englisch"))) %>% 
-  
-  mutate(Kategorien_englisch = if_else(Kategorien_englisch == str_to_upper(Kategorien_englisch), str_to_title(Kategorien_englisch), Kategorien_englisch)) %>% 
-  
-  drop_na() %>% 
-  
-  filter(Kategorien_englisch != "Na") %>% 
-  
-  mutate(id_title = str_remove(`Tool-Nr.`, "x")) %>% 
-  
-  select(-`Tool-Nr.`)
+  select(one_of(c("var", "element_name_en")))
 
 
-my_matches <- match(names(JMT_joblist_final), descriptorDefinitons$Kategorien_englisch)
+my_matches <- match(names(JMT_joblist_final), descriptor_definitions$element_name_en)
 
-my_titles <- descriptorDefinitons[my_matches, ] %>% 
+my_titles <- descriptor_definitions[my_matches, ] %>% 
   t() %>% 
-  as_tibble() %>% 
-  mutate_all(as.character())
+  as_tibble()
 
 names(my_titles) <- names(JMT_joblist_final)
 
 JMT_joblist_final <- mutate_all(JMT_joblist_final, as.character)
 
 JMT_joblist_final <- bind_rows(my_titles, JMT_joblist_final)
+
+
+# Remove all soft-hyphens 
+# (see https://stackoverflow.com/questions/57077145/how-to-remove-empty-string-in-string)
+
+JMT_joblist_final <- JMT_joblist_final %>% 
+  mutate(across(everything(), ~str_remove_all(., '\U00AD'))) %>% 
+  mutate(across(everything(), ~replace_na(., "")))
+
+
+## Diese ONet Kategorien werden in unserem Tool nicht verwendet 
+# (sind bereits in anderen JMT Variabeln integriert)
+
+JMT_joblist_final %>% 
+  slice(1) %>% 
+  pivot_longer(everything()) %>% 
+  filter(value == "") %>% 
+  pull(name) %>% 
+  dput()
+
+JMT_joblist_final <- select(JMT_joblist_final, -one_of(c(
+  "Management of Personnel Resources", "Making Decisions and Solving Problems", 
+  "Monitoring and Controlling Resources", "Performing General Physical Activities"))) %>% 
+  slice(-2)
+
+
+
+rm("abgll", "abgll_long", "all_onet_cat", "BB_job_list", "chberufe", 
+  "chberufe_final", "chberufe_long", "chberufe_long_distinct", 
+  "descriptor_definitions", "gegengecheckt", "JMT_joblist_final", 
+  "my_col_types", "my_matches", "my_titles")
+
+
+
 

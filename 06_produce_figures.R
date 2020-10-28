@@ -2,12 +2,12 @@ library(tidyverse)
 library(ggrepel)
 library(readxl)
 library(staplr)
+library(textclean)
 
 # Produce plots -----------------------------------------------------------
 
 descriptors_with_anchors <- readRDS("02_workspace/descriptors_with_anchors.RData")
 descriptors_witout_anchors <- readRDS("02_workspace/descriptors_witout_anchors.RData")
-
 
 
 # Get descriptors with anchor descriptions --------------------------------
@@ -66,6 +66,29 @@ descriptors <- descriptors %>%
 descriptor_width = 80
 anchor_width = 18
 
+
+# Bei zu langen Wörtern fügen wir Bindestriche ein, sodass die Anchors nicht zu breit werden.Das haben wir gemerkt, nachdem wir den gesamten Code laufen liessen und die PDFs gegencheckten.
+# Diejenigen Bilder, bei denen der Text zu breit war, haben wir dann hier in den nächsten Zeilen einzeln angepasst.
+
+descriptors[descriptors$id_title == 183, "anchor_text"][1,] <- "Überwachen und Integrieren von Steuerungs- rückmeldungen in einer petrochemischen Verarbeitungsanlage, um den Produktionsfluss aufrechtzuerhalten"
+descriptors[descriptors$id_title == 196, "anchor_text"][1,] <- "Die Computersystem- anforderungen eines großen Unternehmens ermitteln und die Nutzung der Geräte überwachen"
+descriptors[descriptors$id_title == 227, "anchor_text"][2,] <- "Ein Qualitäts- verbesserungsseminar leiten"
+descriptors[descriptors$id_title == 271, "anchor_text"][1,] <- "Die elektronische Schaltung für einen wissenschaftlichen Hochgeschwindigkeits- computer zeichnen"
+descriptors[descriptors$id_title == 293, "anchor_text"][1,] <- "Als administrativer Direktor einer grossen Computerverkaufs- organisation tätig sein"
+descriptors[descriptors$id_title == 6, "anchor_text"][1,] <- "Die Bedienungs- anleitung zu einem Raketensteuerungs- systems verstehen"
+
+# Remove dots at the end of the anchor texts if there are any.
+
+descriptors$anchor_text <- str_remove(descriptors$anchor_text, "\\.$")
+
+# Add dots in description if missing
+
+descriptors$description_de <- add_missing_endmark(descriptors$description_de, replacement = ".")
+
+
+
+# Define text width
+
 descriptors <- mutate(descriptors, 
                       
                       element_name_de = str_trim(element_name_de),
@@ -84,6 +107,8 @@ descriptors <- mutate(descriptors,
                       description_de = str_c(description_de, "\n")
                       
 )
+
+
 
 
 
@@ -139,9 +164,6 @@ descriptors <- descriptors %>%
 
 
 
-# descriptors <- select(descriptors, -anchor_val, -anchor_val_5, -c(elem_nm_wid:max_wid_txt), -c(elem_nm_len:tot_len_txt_and_anchors))
-
-
 # Define default figure dimensions ----------------------------------------
 
 default_pdf_width = 13
@@ -154,8 +176,6 @@ descriptors <- descriptors %>%
   mutate(pdf_width = if_else(anchors == "yes", default_pdf_width, default_pdf_width * prop_wid_txt)) %>% 
   mutate(pdf_height = if_else(anchors == "yes", anchor_figures_height * prop_len_txt_and_anchors, no_anchor_pdf_height * prop_len_txt))
 
-
-# descriptors <- select(descriptors, -c(prop_wid_txt:prop_len_txt_and_anchors))
 
 # Get some test items -----------------------------------------------------
 
@@ -224,7 +244,7 @@ img_function <- function(my_scales, my_device, file_path) {
   if (my_scales$anchors[1] == "no") {
     
     only_title <- ggplot(data = my_scales) + 
-      labs(title = str_c(my_scales$element_name_de, ":\n")) +
+      labs(title = str_c(my_scales$element_name_de, "\n")) +
       theme_void()+
       facet_grid(. ~ description_de) + 
       
@@ -270,7 +290,7 @@ img_function <- function(my_scales, my_device, file_path) {
       theme_void()
     
     title_added <- descriptors + facet_grid(. ~ description_de) + 
-      labs(title = str_c(my_scales$element_name_de, ":\n")) +
+      labs(title = str_c(my_scales$element_name_de, "\n")) +
       theme(strip.text = element_text(size = 9, lineheight = 0.9),
             plot.title = element_text(hjust = 0.5, size = 9, face = "bold"))
     
@@ -288,18 +308,18 @@ img_function <- function(my_scales, my_device, file_path) {
   
 }
 
+# Run function and produce many pictures
+
 
 pb <- progress::progress_bar$new(total = length(descriptors_l))
 
 invisible(map(descriptors_l[seq_along(descriptors_l)], img_function, my_device = "pdf", file_path = file.path("03_output", "definitions_anchors_figures")))
 
-my_dir <- str_c("03_output/definitions_anchors_figures", "pdf", sep = "/")
+
+# Combine the pictures (pdf's in one file)
 
 staple_pdf(input_directory = str_c("03_output", "definitions_anchors_figures", "pdf", sep = "/"),
            output_filepath = str_c("03_output", "definitions_anchors_figures", "pdf", "00_all.pdf", sep = "/"))
-
-my_device ? 
-
 
 
 # Save picture dimensions -------------------------------------------------
@@ -311,11 +331,4 @@ descriptors %>%
   mutate(id_title = as.numeric(id_title)) %>% 
   arrange(id_title) %>% 
   write_csv2("03_output/definitions_anchors_figures/picture_dimensions.csv")
-
-
-
-rm("anchor_figures_height", "anchor_width", "default_pdf_width", 
-  "descriptor_width", "descriptors", "descriptors_l", "file_name", 
-  "file_path", "img_function", "my_device", "my_scales", "no_anchor_pdf_height", 
-  "only_title", "pb")
 
