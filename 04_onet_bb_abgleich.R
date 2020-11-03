@@ -1,17 +1,15 @@
 
 library(tidyverse)
 library(readxl)
+library(zoo)
 
-## Wir laden die Onet Kategorien und JMT Werte für jeden Beruf
+## Wir laden die Onet Kategorien und JMT Werte fÃ¼r jeden Beruf
 
 onet <- readRDS(file = file.path("02_workspace", "o_net_data.RData")) %>% 
   rename(ONETtitle = title)
 
-dput(sort(colnames(onet)))
 
-
-
-# Onet Liste wird mit zusätzlichen von uns hinzugefügten Job Matching Tool Kategorien ergänzt ( z.B. Geschmackssinn)
+# Onet Liste wird mit zusÃ¤tzlichen von uns hinzugefÃ¼gten Job Matching Tool Kategorien ergÃ¤nzt ( z.B. Geschmackssinn)
 
 onet <- onet %>% 
   mutate(`Kontakt mit Tieren` = NA_integer_,
@@ -36,11 +34,14 @@ all_onet_cat <- all_onet_cat[-length(all_onet_cat)]
 
 # Urbans Liste mit JMT Berufen wird mit ONet-Werten ergänzt
 
-chberufe <- read_excel(file.path("01_data", "01_SD_basic_Linking us.xlsx")) %>% 
+chberufe <- file.path("01_data", "01_SD_basic_Linking bis 0.722 (Abgleich bis 0.623).xlsx") %>% 
+  
+  read_excel(sheet = "Gegencheck") %>% 
   
   select(sortierNr:Keywords, -ONETtitle) %>% 
   
-  filter(!is.na(`Tool-Titel`)) %>% 
+  filter(!is.na(ONETcode)) %>%
+  filter(!is.na(`Tool-Titel`)) %>%
   
   left_join(onet, by = c("ONETcode" = "o_net_soc_code"))
 
@@ -60,7 +61,7 @@ abgll <- read_excel(file.path("01_data", "BB_AP_merged_2_bereinigt_linking_Über
   filter(!is.na(job_title_BB2))
 
 
-# Abgleichliste abgll ist älter als chberufe-Liste von Urban. D.h. in Urbans Liste hats mehr Berufe drin, zu denen ich gar keine Anforderungswerte 
+# Abgleichliste abgll ist Älter als chberufe-Liste von Urban. D.h. in Urbans Liste hats mehr Berufe drin, zu denen ich gar keine Anforderungswerte 
 # von berufsberatung.ch habe. Aktuell konnten nur 734 Berufe mit ONET werten aus chberufe-Liste mit dem CH-Kontext abgeglichen werden. Zudem: zu
 # vielen Berufen in chberufe-Liste hat es sowieso keine Anforderungsinfos auf berufsberatung.ch oder anforderungsprofile.ch
 
@@ -79,7 +80,7 @@ chberufe_long <- mutate(chberufe_long, Bbtitle = replace_na(Bbtitle, "do_not_mat
 chberufe_long <- left_join(chberufe_long, abgll_long, by = c("Bbtitle" = "job_title_BB2"))
 
 
-# Fülle die Spalte Vorbildung_Zulassungsvoraussetzungen mit dem entsprechenden Text, der in berufsberatung.ch unter Anforderungen stand
+# Fälle die Spalte Vorbildung_Zulassungsvoraussetzungen mit dem entsprechenden Text, der in berufsberatung.ch unter Anforderungen stand
 
 
 chberufe_long <- chberufe_long %>% 
@@ -191,6 +192,16 @@ chberufe_final <- chberufe_final %>%
   mutate(Bbtitle = if_else(Bbtitle == "do_not_match", NA_character_, Bbtitle))
 
 
+# Wir ersetzen fehlende Werte in Onet Kategorien mit dem vorangehenden oder 
+# nachfolgenden Wert der Onet Kategorie innerhalb der gleichen ONET codes.
+
+chberufe_final <- chberufe_final %>%
+  group_by(ONETcode) %>% 
+  mutate_at(vars("Auditory Attention":"Working Conditions"), ~(na.locf(., na.rm = FALSE))) %>% 
+  mutate_at(vars("Auditory Attention":"Working Conditions"), ~(na.locf(., na.rm = FALSE, fromLast = TRUE))) %>% 
+  ungroup()
+
+
 # Do some quality checks
 
 identical(sort(chberufe$`Tool-Titel`), sort(chberufe_final$`Tool-Titel`))
@@ -202,9 +213,10 @@ chberufe_final %>%
   filter_all(any_vars(!is.na(.)))
 
 
-# ------------------------- Wir mergen Berufsberatungs und onet Daten (für finale Liste für Wolfgang zum HOchladen in JMT Datenbank --------------------------
+# ------------------------- Wir mergen Berufsberatungs und onet Daten (fÃ¼r finale Liste fÃ¼r Wolfgang zum HOchladen in JMT Datenbank --------------------------
 
-BB_job_list <- readRDS(file.path("02_workspace", "BB_characteristics", "BB_job_list.RData"))
+BB_job_list <- readRDS(file.path("02_workspace", "BB_characteristics", "BB_job_list.RData")) %>% 
+  filter(webID != 7163) # Beruf Lebensmittelchemiker ist auf Berufsberatung doppelt erfasst.
 
 JMT_joblist_final <- chberufe_final %>% 
   left_join(rename(BB_job_list, Swissdoc_BB = Swissdoc), by = c("Bbtitle" = "jobTitle")) %>% 
@@ -214,7 +226,7 @@ JMT_joblist_final <- chberufe_final %>%
   mutate(Vorbildung_Zulassungsvoraussetzungen = str_remove(Vorbildung_Zulassungsvoraussetzungen, "\\\nNA"))
 
 
-# JMT Nummer wird über ONet Kategorien als Zeile eingefügt
+# JMT Nummer wird über ONet Kategorien als Zeile eingefÃ¼gt
 
 descriptor_definitions <- read_excel(file.path("01_data/titles_2020_26_10.xlsx")) %>% 
   
@@ -258,12 +270,72 @@ JMT_joblist_final <- select(JMT_joblist_final, -one_of(c(
   slice(-2)
 
 
+# Add Holland ONET-code column --------------------------------------------
+
+holland <- JMT_joblist_final %>%
+
+  select(`Tool-Titel`, ONETcode, Realistic, Investigative, Artistic, Social, Enterprising, Conventional) %>%
+
+  rename(R = Realistic, I = Investigative, A = Artistic, S = Social, E = Enterprising, C = Conventional) %>%
+
+  slice(-1) %>%
+
+  na.omit() %>%
+
+  arrange(ONETcode) %>%
+
+  mutate_at(vars(R:C), as.integer)
+
+
+find_top3 <- function(x) {
+  
+  mySeq <- unlist(sort(x, decreasing = TRUE))
+  r <- rle(mySeq)
+  r$values <- seq_along(r$values)
+  pre_res <- sapply(split(names(mySeq), inverse.rle(r)), paste, collapse = "=")[1:3]
+  res <- paste0(pre_res, collapse = ">")
+  
+  return(res)
+  
+}
+
+holland$holland_onet <- apply(holland[,-c(1:2)], 1, find_top3)
+
+
+JMT_joblist_final <- JMT_joblist_final %>% 
+  left_join(select(holland, `Tool-Titel`, holland_onet), by = "Tool-Titel") %>% 
+  select(sortierNr:url, holland_onet, ONETcode:`Gute Allgemeinbildung`)
+
+
+
+# Ändere Namen von Variablen analog Wolfgangs DB --------------------------
+
+JMT_joblist_final <- rename(JMT_joblist_final, 
+         jobname = `Tool-Titel`,
+         jobname_bb = Bbtitle,
+         id_web = webID,
+         description = shortDescription,
+         keywords_de = Keywords,
+         edu_type = Bildungstypen,
+         jobarea = Berufsfelder,
+         branch = Branchen,
+         swissdoc = sd_nr,
+         activity = `Tätigkeiten`,
+         length2 = Dauer,
+         preptraining = Vorbildung_Zulassungsvoraussetzungen,
+         onet_code = ONETcode,
+         onet_title = ONETtitle)
+
+
+
+
+write.csv(JMT_joblist_final, file.path("03_output", "JMT_joblist_final_comma_delim.csv"), 
+          row.names = FALSE)
+
+write.csv2(JMT_joblist_final, file.path("03_output", "JMT_joblist_final_semicol_delim.csv"), 
+          row.names = FALSE)
 
 rm("abgll", "abgll_long", "all_onet_cat", "BB_job_list", "chberufe", 
-  "chberufe_final", "chberufe_long", "chberufe_long_distinct", 
-  "descriptor_definitions", "gegengecheckt", "JMT_joblist_final", 
-  "my_col_types", "my_matches", "my_titles")
-
-
-
-
+     "chberufe_final", "chberufe_long", "chberufe_long_distinct", 
+     "descriptor_definitions", "find_top3", "gegengecheckt", "holland", 
+     "JMT_joblist_final", "my_col_types", "my_matches", "my_titles")
